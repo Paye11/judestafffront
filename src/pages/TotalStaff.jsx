@@ -150,17 +150,6 @@ const TotalStaff = () => {
 
         setCourts(normalizedCourts);
 
-        const circuitIds = circuits.map((c) => c._id).filter(Boolean);
-        const orders = await Promise.all(
-          circuitIds.map((id) => getStaffOrderByCourt(id).catch(() => []))
-        );
-
-        const nextOrderByCourt = {};
-        circuitIds.forEach((id, idx) => {
-          nextOrderByCourt[String(id)] = orders[idx] || [];
-        });
-        setStaffOrderByCourt(nextOrderByCourt);
-
         const nextStaff =
           staffRes && staffRes.success
             ? staffRes.staff || []
@@ -168,71 +157,112 @@ const TotalStaff = () => {
             ? staffRes
             : [];
 
-        const circuitCourtIds = circuits.map((c) => String(c._id)).filter(Boolean);
-        const activeOrderByCourt = nextOrderByCourt;
-        const orderIndexByCourt = new Map(
-          circuitCourtIds.map((id, index) => [String(id), index])
-        );
-
+        const normalizeName = (value) => String(value || "").trim().toLowerCase();
         const getCourtIdFromStaff = (staff) => {
           if (!staff?.courtId) return null;
           return typeof staff.courtId === "object" ? staff.courtId._id : staff.courtId;
         };
 
+        const findDeptByKeyword = (keyword) => {
+          const normalizedKeyword = normalizeName(keyword);
+          const exact = depts.find((d) => normalizeName(d.name) === normalizedKeyword);
+          if (exact) return exact;
+          return depts.find((d) => normalizeName(d.name).includes(normalizeName(keyword)));
+        };
+
+        const probateDept = findDeptByKeyword("probate");
+        const debtDept = findDeptByKeyword("debt");
+        const trafficDept = findDeptByKeyword("traffic");
+
+        const deptIdsToSkip = new Set(
+          [probateDept?._id, debtDept?._id, trafficDept?._id]
+            .filter(Boolean)
+            .map((id) => String(id))
+        );
+
+        const remainingDepts = depts.filter((d) => !deptIdsToSkip.has(String(d._id)));
+        const magCourtsOrdered = [...mags].sort((a, b) => {
+          if (a?.createdAt && b?.createdAt) {
+            return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+          }
+          return normalizeName(a?.name).localeCompare(normalizeName(b?.name));
+        });
+
+        const orderedCourtGroups = [
+          ...circuits.map((c) => ({ type: "circuit", court: c })),
+          ...(probateDept ? [{ type: "department", court: probateDept }] : []),
+          ...(debtDept ? [{ type: "department", court: debtDept }] : []),
+          ...magCourtsOrdered.map((m) => ({ type: "magisterial", court: m })),
+          ...(trafficDept ? [{ type: "department", court: trafficDept }] : []),
+          ...remainingDepts.map((d) => ({ type: "department", court: d })),
+        ];
+
+        const allCourtIds = [
+          ...circuits.map((c) => c._id),
+          ...mags.map((m) => m._id),
+          ...depts.map((d) => d._id),
+        ]
+          .filter(Boolean)
+          .map((id) => String(id));
+
+        const orders = await Promise.all(
+          allCourtIds.map((id) => getStaffOrderByCourt(id).catch(() => []))
+        );
+
+        const nextOrderByCourt = {};
+        allCourtIds.forEach((id, idx) => {
+          nextOrderByCourt[String(id)] = orders[idx] || [];
+        });
+        setStaffOrderByCourt(nextOrderByCourt);
+
         const sortBySavedOrder = (staff, order) => {
           const index = new Map((order || []).map((id, i) => [String(id), i]));
           return [...staff].sort((a, b) => {
-            const aIndex = index.has(String(a._id)) ? index.get(String(a._id)) : Number.MAX_SAFE_INTEGER;
-            const bIndex = index.has(String(b._id)) ? index.get(String(b._id)) : Number.MAX_SAFE_INTEGER;
+            const aIndex = index.has(String(a._id))
+              ? index.get(String(a._id))
+              : Number.MAX_SAFE_INTEGER;
+            const bIndex = index.has(String(b._id))
+              ? index.get(String(b._id))
+              : Number.MAX_SAFE_INTEGER;
             if (aIndex !== bIndex) return aIndex - bIndex;
-            return (a?.name || "").localeCompare(b?.name || "");
+            return normalizeName(a?.name).localeCompare(normalizeName(b?.name));
           });
         };
 
-        const circuitBuckets = new Map();
-        const remaining = [];
+        const usedStaffIds = new Set();
+        const orderedStaff = [];
 
-        (nextStaff || []).forEach((s) => {
-          if (s?.courtType === "circuit") {
-            const courtId = getCourtIdFromStaff(s);
-            if (courtId) {
-              const key = String(courtId);
-              const list = circuitBuckets.get(key) || [];
-              list.push(s);
-              circuitBuckets.set(key, list);
-              return;
-            }
-          }
-          remaining.push(s);
+        orderedCourtGroups.forEach(({ type, court }) => {
+          const courtId = String(court._id);
+          const groupStaff = (nextStaff || []).filter((s) => {
+            if (usedStaffIds.has(String(s._id))) return false;
+            if (s?.courtType !== type) return false;
+            return String(getCourtIdFromStaff(s)) === courtId;
+          });
+
+          groupStaff.forEach((s) => usedStaffIds.add(String(s._id)));
+
+          const order = nextOrderByCourt[courtId] || [];
+          orderedStaff.push(...sortBySavedOrder(groupStaff, order));
         });
 
-        const orderedCircuitStaff = circuitCourtIds.flatMap((courtId) => {
-          const bucket = circuitBuckets.get(String(courtId)) || [];
-          const order = activeOrderByCourt[String(courtId)] || [];
-          return sortBySavedOrder(bucket, order);
-        });
+        const remainingStaff = (nextStaff || [])
+          .filter((s) => !usedStaffIds.has(String(s._id)))
+          .sort((a, b) => {
+            const aType = normalizeName(a?.courtType);
+            const bType = normalizeName(b?.courtType);
+            if (aType !== bType) return aType.localeCompare(bType);
 
-        const unknownCircuitStaff = (nextStaff || [])
-          .filter((s) => s?.courtType === "circuit")
-          .filter((s) => {
-            const courtId = getCourtIdFromStaff(s);
-            return courtId && !orderIndexByCourt.has(String(courtId));
-          })
-          .sort((a, b) => (a?.name || "").localeCompare(b?.name || ""));
+            const aCourtName =
+              typeof a?.courtId === "object" ? normalizeName(a.courtId?.name) : "";
+            const bCourtName =
+              typeof b?.courtId === "object" ? normalizeName(b.courtId?.name) : "";
+            if (aCourtName !== bCourtName) return aCourtName.localeCompare(bCourtName);
 
-        const remainingSorted = [...remaining].sort((a, b) => {
-          const aType = a?.courtType || "";
-          const bType = b?.courtType || "";
-          if (aType !== bType) return aType.localeCompare(bType);
+            return normalizeName(a?.name).localeCompare(normalizeName(b?.name));
+          });
 
-          const aCourtName = typeof a?.courtId === "object" ? a.courtId?.name || "" : "";
-          const bCourtName = typeof b?.courtId === "object" ? b.courtId?.name || "" : "";
-          if (aCourtName !== bCourtName) return aCourtName.localeCompare(bCourtName);
-
-          return (a?.name || "").localeCompare(b?.name || "");
-        });
-
-        setStaffList([...orderedCircuitStaff, ...unknownCircuitStaff, ...remainingSorted]);
+        setStaffList([...orderedStaff, ...remainingStaff]);
 
       } catch (err) {
         console.error(err);

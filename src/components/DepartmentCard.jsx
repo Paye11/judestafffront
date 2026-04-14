@@ -1,7 +1,7 @@
 import React from "react";
 import { Users } from "lucide-react";
 
-const DepartmentCard = ({ department, onEdit, onDelete }) => {
+const DepartmentCard = ({ department, onView, onEdit, onDelete }) => {
   return (
     <div className="rounded-2xl shadow-md p-6 flex flex-col items-center gap-4 bg-white transition hover:scale-105 duration-300">
       <div className="flex items-center justify-center w-16 h-16 rounded-full bg-purple-100 text-purple-500">
@@ -16,6 +16,12 @@ const DepartmentCard = ({ department, onEdit, onDelete }) => {
       </p>
 
       <div className="flex flex-wrap justify-center gap-3 mt-2 w-full">
+        <button
+          onClick={() => onView(department)}
+          className="bg-gray-800 text-white px-4 py-2 rounded-xl hover:bg-gray-900 transition w-full sm:w-auto"
+        >
+          View
+        </button>
         <button
           onClick={() => onEdit(department)}
           className="bg-blue-500 text-white px-4 py-2 rounded-xl hover:bg-blue-600 transition w-full sm:w-auto"
