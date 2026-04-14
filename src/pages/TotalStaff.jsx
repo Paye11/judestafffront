@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import StaffModal from "../components/StaffModal";
 import { getAllStaff, getMagisterialCourts, getCircuitCourts, getDepartments, deleteStaff, getActiveStaff } from "../apis/api";
 import { toast } from "react-toastify";
@@ -88,50 +88,8 @@ const TotalStaff = () => {
       }
     }
   }, [filterCourtType, courts, filterCourtId]);
-// Trigger filter automatically when searchTerm changes
-useEffect(() => {
-  if (searchTerm.trim() !== "") {
-    handleFilter();
-  } else {
-    // if search box is cleared, reload staff
-    (async () => {
-      try {
-        const res = await getActiveStaff();
-        if (res && res.success) {
-          setStaffList(res.staff || []);
-        } else if (Array.isArray(res)) {
-          setStaffList(res);
-        }
-      } catch (err) {
-        console.error(err);
-        toast.error("Failed to fetch staff");
-      }
-    })();
-  }
-}, [searchTerm]); 
 
-  const handleAddStaff = () => { setSelectedStaff(null); setModalOpen(true); };
-  const handleEdit = (staff) => { setSelectedStaff(staff); setModalOpen(true); };
-
-  const handleDelete = async (staff) => {
-    if (!staff._id) { toast.error("Cannot delete unsaved staff"); return; }
-    if (!window.confirm(`Are you sure you want to delete ${staff.name}?`)) return;
-
-    try {
-      const res = await deleteStaff(staff._id);
-      if (res && res.success) {
-        setStaffList(staffList.filter(s => s._id !== staff._id));
-        toast.success(res.message || "Staff deleted successfully");
-      } else if (!res) {
-        setStaffList(staffList.filter(s => s._id !== staff._id));
-        toast.success("Staff deleted successfully");
-      }
-    } catch (err) {
-      toast.error(err.message || "Error deleting staff");
-    }
-  };
-
-  const handleFilter = async () => {
+  const handleFilter = useCallback(async () => {
     try {
       setFilterLoading(true);
       const params = {};
@@ -152,6 +110,47 @@ useEffect(() => {
       toast.error("Failed to filter staff");
     } finally {
       setFilterLoading(false);
+    }
+  }, [filterCourtId, filterCourtType, searchTerm]);
+
+  useEffect(() => {
+    if (searchTerm.trim() !== "") {
+      handleFilter();
+    } else {
+      (async () => {
+        try {
+          const res = await getActiveStaff();
+          if (res && res.success) {
+            setStaffList(res.staff || []);
+          } else if (Array.isArray(res)) {
+            setStaffList(res);
+          }
+        } catch (error) {
+          console.error(error);
+          toast.error("Failed to fetch staff");
+        }
+      })();
+    }
+  }, [handleFilter, searchTerm]);
+
+  const handleAddStaff = () => { setSelectedStaff(null); setModalOpen(true); };
+  const handleEdit = (staff) => { setSelectedStaff(staff); setModalOpen(true); };
+
+  const handleDelete = async (staff) => {
+    if (!staff._id) { toast.error("Cannot delete unsaved staff"); return; }
+    if (!window.confirm(`Are you sure you want to delete ${staff.name}?`)) return;
+
+    try {
+      const res = await deleteStaff(staff._id);
+      if (res && res.success) {
+        setStaffList(staffList.filter(s => s._id !== staff._id));
+        toast.success(res.message || "Staff deleted successfully");
+      } else if (!res) {
+        setStaffList(staffList.filter(s => s._id !== staff._id));
+        toast.success("Staff deleted successfully");
+      }
+    } catch (err) {
+      toast.error(err.message || "Error deleting staff");
     }
   };
 

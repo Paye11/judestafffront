@@ -9,10 +9,6 @@ import {
   getCircuitCourts,
 } from "../apis/api";
 import { toast } from "react-toastify";
-import { jsPDF } from "jspdf";
-import * as XLSX from "xlsx";
-import { Document, Packer, Paragraph, TextRun } from "docx";
-import { FileText, ChevronDown } from "lucide-react";
 
 const SkeletonCourtCard = () => (
   <div className="rounded-2xl shadow-md p-6 flex flex-col items-center gap-4 bg-white animate-pulse">
@@ -32,7 +28,6 @@ const MagisterialCourts = () => {
   const [circuitCourts, setCircuitCourts] = useState([]);
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedCourt, setSelectedCourt] = useState(null); 
-  const [dropdownOpen, setDropdownOpen] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {

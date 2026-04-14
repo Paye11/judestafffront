@@ -39,8 +39,8 @@ const Departments = () => {
         setLoading(true);
         const res = await getDepartments();
         if (res.success) setDepartments(res.departments);
-      } catch (err) {
-        toast.error("Failed to load departments");
+      } catch (error) {
+        toast.error(error.message || "Failed to load departments");
       } finally {
         setLoading(false);
       }
@@ -90,7 +90,7 @@ const Departments = () => {
         toast.success(res.message);
       }
     } catch (error) {
-      toast.error("Failed to delete department");
+      toast.error(error.message || "Failed to delete department");
     }
   };
 

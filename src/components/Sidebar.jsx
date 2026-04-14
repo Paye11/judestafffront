@@ -87,7 +87,7 @@ export default function Sidebar() {
         <SidebarHeader />
 
         <nav className="sidebar-menu">
-          {menuItems.map(({ key, label, icon: Icon }) => (
+          {menuItems.map(({ key, label, icon }) => (
             <NavLink
               key={key}
               to={`/admin/${key}`}
@@ -98,7 +98,7 @@ export default function Sidebar() {
               }
               onClick={() => isMobile && setSidebarOpen(false)}
             >
-              <Icon className="sidebar-icon" />
+              {React.createElement(icon, { className: "sidebar-icon" })}
               <span className="sidebar-label">{label}</span>
             </NavLink>
           ))}

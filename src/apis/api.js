@@ -172,3 +172,18 @@ export const getLogo = async () => {
   return res.data;
 };
 
+export const getStaffByCourt = async (courtId) => {
+  const res = await apiClient.get(`/staff/by-court/${courtId}`);
+  return res.data.staff;
+};
+
+export const getStaffOrderByCourt = async (courtId) => {
+  const res = await apiClient.get(`/settings/staff-order/${courtId}`);
+  return res.data.order || [];
+};
+
+export const saveStaffOrderByCourt = async (courtId, order) => {
+  const res = await apiClient.put(`/settings/staff-order/${courtId}`, { order });
+  return res.data;
+};
+

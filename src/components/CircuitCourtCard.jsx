@@ -1,7 +1,7 @@
 import React from "react";
 import { Building } from "lucide-react";
 
-const CircuitCourtCard = ({ court, onEdit, onDelete }) => {
+const CircuitCourtCard = ({ court, onView, onEdit, onDelete }) => {
   return (
     <div className="rounded-2xl shadow-md p-6 flex flex-col items-center gap-4 bg-white transition hover:scale-105 duration-300">
       <div className="flex items-center justify-center w-16 h-16 rounded-full bg-blue-100 text-blue-500">
@@ -16,6 +16,12 @@ const CircuitCourtCard = ({ court, onEdit, onDelete }) => {
       </p>
 
       <div className="flex gap-3 mt-2">
+        <button
+          onClick={() => onView(court)}
+          className="bg-gray-800 text-white px-4 py-2 rounded-xl hover:bg-gray-900 transition"
+        >
+          View
+        </button>
         <button
           onClick={() => onEdit(court)}
           className="bg-blue-500 text-white px-4 py-2 rounded-xl hover:bg-blue-600 transition"

@@ -46,8 +46,8 @@ const Settings = () => {
       if (res && res.success && res.logo) {
         setLogoPreview(res.logo);
       }
-    } catch (err) {
-      console.log("No logo found");
+    } catch (error) {
+      console.error(error);
     }
   };
 

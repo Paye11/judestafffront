@@ -405,18 +405,25 @@ const StaffModal = ({ show, onClose, onSave, staff, courts }) => {
     try {
       let courtsData = [];
       switch (courtType) {
-        case "circuit":
+        case "circuit": {
           const circuitsRes = await getCircuitCourts();
-          courtsData = circuitsRes.success ? circuitsRes.courts || [] : circuitsRes || [];
+          courtsData = circuitsRes.success
+            ? circuitsRes.courts || []
+            : circuitsRes || [];
           break;
-        case "magisterial":
+        }
+        case "magisterial": {
           const magsRes = await getMagisterialCourts();
           courtsData = magsRes.success ? magsRes.courts || [] : magsRes || [];
           break;
-        case "department":
+        }
+        case "department": {
           const deptsRes = await getDepartments();
-          courtsData = deptsRes.success ? deptsRes.departments || deptsRes.courts || [] : deptsRes || [];
+          courtsData = deptsRes.success
+            ? deptsRes.departments || deptsRes.courts || []
+            : deptsRes || [];
           break;
+        }
         default:
           courtsData = [];
       }
