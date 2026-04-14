@@ -168,7 +168,71 @@ const TotalStaff = () => {
             ? staffRes
             : [];
 
-        setStaffList(applyCircuitGrouping(nextStaff, nextOrderByCourt));
+        const circuitCourtIds = circuits.map((c) => String(c._id)).filter(Boolean);
+        const activeOrderByCourt = nextOrderByCourt;
+        const orderIndexByCourt = new Map(
+          circuitCourtIds.map((id, index) => [String(id), index])
+        );
+
+        const getCourtIdFromStaff = (staff) => {
+          if (!staff?.courtId) return null;
+          return typeof staff.courtId === "object" ? staff.courtId._id : staff.courtId;
+        };
+
+        const sortBySavedOrder = (staff, order) => {
+          const index = new Map((order || []).map((id, i) => [String(id), i]));
+          return [...staff].sort((a, b) => {
+            const aIndex = index.has(String(a._id)) ? index.get(String(a._id)) : Number.MAX_SAFE_INTEGER;
+            const bIndex = index.has(String(b._id)) ? index.get(String(b._id)) : Number.MAX_SAFE_INTEGER;
+            if (aIndex !== bIndex) return aIndex - bIndex;
+            return (a?.name || "").localeCompare(b?.name || "");
+          });
+        };
+
+        const circuitBuckets = new Map();
+        const remaining = [];
+
+        (nextStaff || []).forEach((s) => {
+          if (s?.courtType === "circuit") {
+            const courtId = getCourtIdFromStaff(s);
+            if (courtId) {
+              const key = String(courtId);
+              const list = circuitBuckets.get(key) || [];
+              list.push(s);
+              circuitBuckets.set(key, list);
+              return;
+            }
+          }
+          remaining.push(s);
+        });
+
+        const orderedCircuitStaff = circuitCourtIds.flatMap((courtId) => {
+          const bucket = circuitBuckets.get(String(courtId)) || [];
+          const order = activeOrderByCourt[String(courtId)] || [];
+          return sortBySavedOrder(bucket, order);
+        });
+
+        const unknownCircuitStaff = (nextStaff || [])
+          .filter((s) => s?.courtType === "circuit")
+          .filter((s) => {
+            const courtId = getCourtIdFromStaff(s);
+            return courtId && !orderIndexByCourt.has(String(courtId));
+          })
+          .sort((a, b) => (a?.name || "").localeCompare(b?.name || ""));
+
+        const remainingSorted = [...remaining].sort((a, b) => {
+          const aType = a?.courtType || "";
+          const bType = b?.courtType || "";
+          if (aType !== bType) return aType.localeCompare(bType);
+
+          const aCourtName = typeof a?.courtId === "object" ? a.courtId?.name || "" : "";
+          const bCourtName = typeof b?.courtId === "object" ? b.courtId?.name || "" : "";
+          if (aCourtName !== bCourtName) return aCourtName.localeCompare(bCourtName);
+
+          return (a?.name || "").localeCompare(b?.name || "");
+        });
+
+        setStaffList([...orderedCircuitStaff, ...unknownCircuitStaff, ...remainingSorted]);
 
       } catch (err) {
         console.error(err);
@@ -178,7 +242,7 @@ const TotalStaff = () => {
       }
     };
     fetchData();
-  }, [applyCircuitGrouping]);
+  }, []);
 
   useEffect(() => {
     if (!filterCourtType) {
