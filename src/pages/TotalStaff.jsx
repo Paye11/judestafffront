@@ -1,7 +1,15 @@
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import StaffModal from "../components/StaffModal";
-import { getAllStaff, getMagisterialCourts, getCircuitCourts, getDepartments, deleteStaff, getActiveStaff } from "../apis/api";
+import {
+  deleteStaff,
+  getActiveStaff,
+  getAllStaff,
+  getCircuitCourts,
+  getDepartments,
+  getMagisterialCourts,
+  getStaffOrderByCourt,
+} from "../apis/api";
 import { toast } from "react-toastify";
 import { FileText, Printer, Plus, Edit2, Trash2, Search, Filter, X } from "lucide-react";
 
@@ -16,6 +24,89 @@ const TotalStaff = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
   const [filterLoading, setFilterLoading] = useState(false);
+  const [staffOrderByCourt, setStaffOrderByCourt] = useState({});
+
+  const getCourtId = useCallback((staff) => {
+    if (!staff?.courtId) return null;
+    return typeof staff.courtId === "object" ? staff.courtId._id : staff.courtId;
+  }, []);
+
+  const sortByOrder = useCallback((staff, order) => {
+    const orderIndex = new Map((order || []).map((id, index) => [String(id), index]));
+    return [...staff].sort((a, b) => {
+      const aIndex = orderIndex.has(String(a._id))
+        ? orderIndex.get(String(a._id))
+        : Number.MAX_SAFE_INTEGER;
+      const bIndex = orderIndex.has(String(b._id))
+        ? orderIndex.get(String(b._id))
+        : Number.MAX_SAFE_INTEGER;
+      if (aIndex !== bIndex) return aIndex - bIndex;
+      return (a.name || "").localeCompare(b.name || "");
+    });
+  }, []);
+
+  const circuitCourtIdsInOrder = useMemo(() => {
+    return (courts || [])
+      .filter((c) => c.type === "circuit")
+      .map((c) => String(c._id));
+  }, [courts]);
+
+  const applyCircuitGrouping = useCallback(
+    (staff, orderOverride) => {
+      const activeOrderByCourt = orderOverride || staffOrderByCourt;
+      const circuitIndex = new Map(
+        circuitCourtIdsInOrder.map((id, index) => [String(id), index])
+      );
+
+      const circuitBuckets = new Map();
+      const remaining = [];
+
+      (staff || []).forEach((s) => {
+        if (s?.courtType === "circuit") {
+          const courtId = getCourtId(s);
+          if (courtId) {
+            const key = String(courtId);
+            const list = circuitBuckets.get(key) || [];
+            list.push(s);
+            circuitBuckets.set(key, list);
+            return;
+          }
+        }
+        remaining.push(s);
+      });
+
+      const orderedCircuitStaff = circuitCourtIdsInOrder.flatMap((courtId) => {
+        const bucket = circuitBuckets.get(String(courtId)) || [];
+        const order = activeOrderByCourt[String(courtId)] || [];
+        return sortByOrder(bucket, order);
+      });
+
+      const remainingSorted = [...remaining].sort((a, b) => {
+        const aType = a?.courtType || "";
+        const bType = b?.courtType || "";
+        if (aType !== bType) return aType.localeCompare(bType);
+
+        const aCourtName =
+          typeof a?.courtId === "object" ? a.courtId?.name || "" : "";
+        const bCourtName =
+          typeof b?.courtId === "object" ? b.courtId?.name || "" : "";
+        if (aCourtName !== bCourtName) return aCourtName.localeCompare(bCourtName);
+
+        return (a?.name || "").localeCompare(b?.name || "");
+      });
+
+      const unknownCircuitStaff = (staff || [])
+        .filter((s) => s?.courtType === "circuit")
+        .filter((s) => {
+          const courtId = getCourtId(s);
+          return courtId && !circuitIndex.has(String(courtId));
+        })
+        .sort((a, b) => (a?.name || "").localeCompare(b?.name || ""));
+
+      return [...orderedCircuitStaff, ...unknownCircuitStaff, ...remainingSorted];
+    },
+    [circuitCourtIdsInOrder, getCourtId, sortByOrder, staffOrderByCourt]
+  );
 
   // Fetch all courts & staff
   useEffect(() => {
@@ -51,18 +142,33 @@ const TotalStaff = () => {
           depts = deptsRes;
         }
 
-        setCourts([
-          ...circuits.map(c => ({ ...c, type: "circuit" })),
-          ...mags.map(m => ({ ...m, type: "magisterial" })),
-          ...depts.map(d => ({ ...d, type: "department" }))
-        ]);
+        const normalizedCourts = [
+          ...circuits.map((c) => ({ ...c, type: "circuit" })),
+          ...mags.map((m) => ({ ...m, type: "magisterial" })),
+          ...depts.map((d) => ({ ...d, type: "department" })),
+        ];
 
-        // Handle staff response
-        if (staffRes && staffRes.success) {
-          setStaffList(staffRes.staff || []);
-        } else if (Array.isArray(staffRes)) {
-          setStaffList(staffRes);
-        }
+        setCourts(normalizedCourts);
+
+        const circuitIds = circuits.map((c) => c._id).filter(Boolean);
+        const orders = await Promise.all(
+          circuitIds.map((id) => getStaffOrderByCourt(id).catch(() => []))
+        );
+
+        const nextOrderByCourt = {};
+        circuitIds.forEach((id, idx) => {
+          nextOrderByCourt[String(id)] = orders[idx] || [];
+        });
+        setStaffOrderByCourt(nextOrderByCourt);
+
+        const nextStaff =
+          staffRes && staffRes.success
+            ? staffRes.staff || []
+            : Array.isArray(staffRes)
+            ? staffRes
+            : [];
+
+        setStaffList(applyCircuitGrouping(nextStaff, nextOrderByCourt));
 
       } catch (err) {
         console.error(err);
@@ -72,7 +178,7 @@ const TotalStaff = () => {
       }
     };
     fetchData();
-  }, []);
+  }, [applyCircuitGrouping]);
 
   useEffect(() => {
     if (!filterCourtType) {
@@ -99,9 +205,18 @@ const TotalStaff = () => {
 
       const res = await getActiveStaff(params);
       if (res && res.success) {
-        setStaffList(res.staff || []);
+        const next = res.staff || [];
+        if (!filterCourtType || filterCourtType === "circuit") {
+          setStaffList(applyCircuitGrouping(next));
+        } else if (filterCourtType === "magisterial" || filterCourtType === "department") {
+          setStaffList(
+            [...next].sort((a, b) => (a?.name || "").localeCompare(b?.name || ""))
+          );
+        } else {
+          setStaffList(next);
+        }
       } else if (Array.isArray(res)) {
-        setStaffList(res);
+        setStaffList(applyCircuitGrouping(res));
       } else {
         toast.error("Failed to filter staff");
       }
@@ -111,7 +226,7 @@ const TotalStaff = () => {
     } finally {
       setFilterLoading(false);
     }
-  }, [filterCourtId, filterCourtType, searchTerm]);
+  }, [applyCircuitGrouping, filterCourtId, filterCourtType, searchTerm]);
 
   useEffect(() => {
     if (searchTerm.trim() !== "") {
@@ -121,9 +236,9 @@ const TotalStaff = () => {
         try {
           const res = await getActiveStaff();
           if (res && res.success) {
-            setStaffList(res.staff || []);
+            setStaffList(applyCircuitGrouping(res.staff || []));
           } else if (Array.isArray(res)) {
-            setStaffList(res);
+            setStaffList(applyCircuitGrouping(res));
           }
         } catch (error) {
           console.error(error);
@@ -131,7 +246,7 @@ const TotalStaff = () => {
         }
       })();
     }
-  }, [handleFilter, searchTerm]);
+  }, [applyCircuitGrouping, handleFilter, searchTerm]);
 
   const handleAddStaff = () => { setSelectedStaff(null); setModalOpen(true); };
   const handleEdit = (staff) => { setSelectedStaff(staff); setModalOpen(true); };
@@ -143,10 +258,10 @@ const TotalStaff = () => {
     try {
       const res = await deleteStaff(staff._id);
       if (res && res.success) {
-        setStaffList(staffList.filter(s => s._id !== staff._id));
+        setStaffList(applyCircuitGrouping(staffList.filter(s => s._id !== staff._id)));
         toast.success(res.message || "Staff deleted successfully");
       } else if (!res) {
-        setStaffList(staffList.filter(s => s._id !== staff._id));
+        setStaffList(applyCircuitGrouping(staffList.filter(s => s._id !== staff._id)));
         toast.success("Staff deleted successfully");
       }
     } catch (err) {
@@ -163,9 +278,9 @@ const TotalStaff = () => {
       setFilterLoading(true);
       const res = await getActiveStaff();
       if (res && res.success) {
-        setStaffList(res.staff || []);
+        setStaffList(applyCircuitGrouping(res.staff || []));
       } else if (Array.isArray(res)) {
-        setStaffList(res);
+        setStaffList(applyCircuitGrouping(res));
       }
     } catch (error) {
       console.error(error);
@@ -490,9 +605,10 @@ const TotalStaff = () => {
         onClose={() => setModalOpen(false)}
         onSave={(updated) => {
           if (selectedStaff) {
-            setStaffList(staffList.map(s => s._id === updated._id ? updated : s));
+            const next = staffList.map((s) => (s._id === updated._id ? updated : s));
+            setStaffList(applyCircuitGrouping(next));
           } else {
-            setStaffList([updated, ...staffList]);
+            setStaffList(applyCircuitGrouping([updated, ...staffList]));
           }
           setModalOpen(false);
         }}
